@@ -197,6 +197,35 @@ actor LocalHealthStore {
         }
     }
 
+    /// Tops today up to the watch's own running total when samples went
+    /// missing here (a wipe, a reinstall, a batch lost before this build).
+    /// The filler covers midnight to the reading, under a uid fixed per day
+    /// and total, so it is written once and later totals add only the rest.
+    func fillGaps(_ totals: [DayTotal]) throws -> [HealthSample] {
+        var fillers: [HealthSample] = []
+        for total in totals where total.at > total.dayStart && total.value.isFinite {
+            var stored = 0.0
+            query(
+                "SELECT COALESCE(SUM(value), 0) FROM samples WHERE metric = ? AND start_ms >= ? AND start_ms < ?",
+                [total.metric.rawValue, total.dayStart, total.dayStart + 86_400_000]
+            ) { row in stored = sqlite3_column_double(row, 0) }
+            let gap = total.value - stored
+            let threshold = total.metric == .distance ? 10.0 : (total.metric == .activeEnergy ? 5.0 : 1.0)
+            guard gap >= threshold else { continue }
+            fillers.append(
+                HealthSample(
+                    metric: total.metric,
+                    value: gap,
+                    start: total.dayStart,
+                    end: total.at,
+                    uid: "fill-\(total.metric.rawValue)-\(total.dayStart)-\(Int64(total.value.rounded()))"
+                )
+            )
+        }
+        if !fillers.isEmpty { _ = try insert(fillers) }
+        return fillers
+    }
+
     func insert(workout: WorkoutSummary) throws {
         let data = try JSONEncoder().encode(workout)
         let json = String(decoding: data, as: UTF8.self)

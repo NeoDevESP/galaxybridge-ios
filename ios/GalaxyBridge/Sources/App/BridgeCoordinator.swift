@@ -151,8 +151,17 @@ final class BridgeCoordinator: ObservableObject {
                 Breadcrumbs.drop("health: store FAILED: \(error.localizedDescription)")
                 return
             }
+            var fillers: [HealthSample] = []
+            do {
+                fillers = try await store.fillGaps(batch.dayTotals)
+                for filler in fillers {
+                    Breadcrumbs.drop("health: filled \(Int(filler.value)) \(filler.metric.rawValue) the watch counted today")
+                }
+            } catch {
+                Breadcrumbs.drop("health: gap fill FAILED: \(error.localizedDescription)")
+            }
             if health.authorized {
-                _ = await health.write(batch: batch)
+                _ = await health.write(batch: HealthBatch(samples: batch.samples + fillers, cursor: batch.cursor))
             }
             await dashboard.refresh()
 

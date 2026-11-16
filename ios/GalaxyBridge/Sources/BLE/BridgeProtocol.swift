@@ -192,13 +192,24 @@ struct HealthSample: Codable, Sendable, Identifiable {
     var id: String { uid }
 }
 
+/// A metric's running total for the local day starting at `dayStart`, as the
+/// watch counts it. Samples are increments; this lets the phone fill a gap.
+struct DayTotal: Codable, Sendable {
+    var metric: Metric
+    var value: Double
+    var dayStart: Int64
+    var at: Int64
+}
+
 struct HealthBatch: Codable, Sendable {
     var samples: [HealthSample]
     var cursor: Int64
+    var dayTotals: [DayTotal] = []
 
-    init(samples: [HealthSample], cursor: Int64) {
+    init(samples: [HealthSample], cursor: Int64, dayTotals: [DayTotal] = []) {
         self.samples = samples
         self.cursor = cursor
+        self.dayTotals = dayTotals
     }
 
     /// A sample of a metric this build does not know yet is skipped rather
@@ -207,6 +218,8 @@ struct HealthBatch: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cursor = try container.decode(Int64.self, forKey: .cursor)
         samples = try container.decode([Lossy<HealthSample>].self, forKey: .samples).compactMap(\.value)
+        // Older watch builds send no totals; unknown metrics are skipped.
+        dayTotals = (try? container.decode([Lossy<DayTotal>].self, forKey: .dayTotals))?.compactMap(\.value) ?? []
     }
 }
 
