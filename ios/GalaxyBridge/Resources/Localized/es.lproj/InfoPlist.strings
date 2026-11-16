@@ -1,0 +1,8 @@
+"NSBluetoothAlwaysUsageDescription" = "GalaxyBridge habla con tu Galaxy Watch por Bluetooth para llevar notificaciones, control de música, contactos, calendario y datos de salud.";
+"NSHealthShareUsageDescription" = "GalaxyBridge lee tus datos de salud solo para no escribir muestras duplicadas del reloj.";
+"NSHealthUpdateUsageDescription" = "GalaxyBridge guarda en Apple Salud los pasos, pulso, distancia, energía y entrenos que mide tu Galaxy Watch.";
+"NSContactsUsageDescription" = "GalaxyBridge envía al reloj los contactos que elijas para que funcionen los nombres en las llamadas y la agenda en la muñeca.";
+"NSCalendarsFullAccessUsageDescription" = "GalaxyBridge envía tus próximos eventos al reloj para que la agenda funcione sin conexión.";
+"NSLocationWhenInUseUsageDescription" = "Solo se usa para etiquetar las rutas de los entrenos grabados por el reloj.";
+"NSLocalNetworkUsageDescription" = "GalaxyBridge busca el servicio de depuración inalámbrica del reloj en esta red para que no tengas que escribir su dirección.";
+"NSCameraUsageDescription" = "GalaxyBridge usa la cámara para leer códigos de barras de alimentos y contar tus repeticiones. El vídeo se analiza en el iPhone y nunca se guarda ni se envía.";

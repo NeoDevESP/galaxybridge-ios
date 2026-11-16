@@ -1,0 +1,215 @@
+name: iOS (companion IPA)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # An .ipa can only be produced on macOS; this is the whole reason the iOS
+    # build lives in CI rather than on a Windows workstation.
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image default Xcode is the one whose simulator runtime is actually
+      # installed. Pinning Xcode_16.app explicitly gave a toolchain with no iOS
+      # platform at all ("iOS 18.0 is not installed"), so every simulator
+      # destination was ineligible.
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes available || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+
+      # The runner may have no iOS simulator runtime installed at all, in which
+      # case every "name=iPhone N" destination fails. Pick a real one if there
+      # is one and fall back to running the tests as a Designed-for-iPad app on
+      # the Mac itself, which exercises the same code.
+      - name: Choose a test destination
+        id: destination
+        run: |
+          # A device can be listed as "available" while its runtime is missing,
+          # which is how the previous run picked an iPhone SE that xcodebuild
+          # then rejected. Require a usable iOS runtime first, and take the
+          # device's UDID so there is no name matching at all.
+          if xcrun simctl list runtimes available | grep -q "^iOS"; then
+            udid=$(xcrun simctl list devices available --json \
+              | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x.get('isAvailable') and 'iPhone' in x['name']), ''))")
+          else
+            udid=""
+          fi
+          if [ -n "$udid" ]; then
+            echo "value=platform=iOS Simulator,id=$udid" >> "$GITHUB_OUTPUT"
+            echo "Testing on simulator $udid"
+          else
+            echo "value=platform=macOS,variant=Designed for iPad" >> "$GITHUB_OUTPUT"
+            echo "No usable iOS simulator runtime; testing as Designed for iPad on the Mac."
+          fi
+
+      # pipefail matters: without it a non-zero xcodebuild is masked by the
+      # formatter at the end of the pipe, and the step goes green while the
+      # tests never ran. That is exactly what happened on the first run.
+      - name: Unit tests
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project GalaxyBridge.xcodeproj \
+            -scheme GalaxyBridge \
+            -destination '${{ steps.destination.outputs.value }}' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee test.log \
+            | grep -E "Test Suite|Test Case|error:|failed|passed|Executed" || true
+          grep -qE "TEST EXECUTE SUCCEEDED|\*\* TEST SUCCEEDED \*\*" test.log
+
+      # Unsigned archive: good enough to inspect, and the input for a
+      # resigning tool (Sideloadly, AltStore, or your own provisioning
+      # profile). A store-ready, signed IPA needs an Apple Developer account
+      # and secrets, wired in the "signed" job below.
+      - name: Archive (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            MARKETING_VERSION="1.0.${{ github.run_number }}" \
+            -project GalaxyBridge.xcodeproj \
+            -scheme GalaxyBridge \
+            -configuration Release \
+            -archivePath build/GalaxyBridge.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENABLE_BITCODE=NO
+
+      - name: Package unsigned IPA
+        working-directory: ios
+        run: |
+          mkdir -p build/Payload
+          cp -R build/GalaxyBridge.xcarchive/Products/Applications/GalaxyBridge.app build/Payload/
+          # An unsigned build carries no entitlements at all, and re-signing
+          # tools (Sideloadly, AltStore) copy the entitlements they find in the
+          # binary. With none, HealthKit was silently dropped and iOS never
+          # listed the app in Health. An ad-hoc signature embeds them.
+          codesign --force --sign - --timestamp=none             --entitlements GalaxyBridge/Resources/GalaxyBridge.entitlements             build/Payload/GalaxyBridge.app
+          codesign -d --entitlements - build/Payload/GalaxyBridge.app 2>&1 | tee build/entitlements.txt
+          grep -q "com.apple.developer.healthkit" build/entitlements.txt             || { echo "HealthKit entitlement missing from the IPA"; exit 1; }
+          cd build
+          zip -qry GalaxyBridge-unsigned.ipa Payload
+          ls -la GalaxyBridge-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: galaxybridge-ipa-unsigned
+          path: ios/build/GalaxyBridge-unsigned.ipa
+          if-no-files-found: error
+
+  signed:
+    # Runs only when the signing secrets exist. Set:
+    #   BUILD_CERTIFICATE_BASE64  (p12 export of your Apple distribution cert)
+    #   P12_PASSWORD
+    #   PROVISIONING_PROFILE_BASE64
+    #   KEYCHAIN_PASSWORD         (any throwaway string)
+    #   EXPORT_METHOD             (development | ad-hoc | app-store)
+    #   TEAM_ID
+    runs-on: macos-15
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for signing secrets
+        id: check
+        env:
+          CERT: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+        run: |
+          if [ -z "$CERT" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No signing secrets; skipping the signed build."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install signing assets
+        if: steps.check.outputs.present == 'true'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          KEYCHAIN=$RUNNER_TEMP/build.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Install XcodeGen
+        if: steps.check.outputs.present == 'true'
+        run: brew install xcodegen
+
+      - name: Generate project
+        if: steps.check.outputs.present == 'true'
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Archive and export signed IPA
+        if: steps.check.outputs.present == 'true'
+        working-directory: ios
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          EXPORT_METHOD: ${{ secrets.EXPORT_METHOD }}
+        run: |
+          xcodebuild archive \
+            -project GalaxyBridge.xcodeproj \
+            -scheme GalaxyBridge \
+            -configuration Release \
+            -archivePath build/GalaxyBridge.xcarchive \
+            -destination 'generic/platform=iOS' \
+            DEVELOPMENT_TEAM="$TEAM_ID"
+
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>${EXPORT_METHOD:-development}</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>compileBitcode</key><false/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath build/GalaxyBridge.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist build/ExportOptions.plist
+
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.present == 'true'
+        with:
+          name: galaxybridge-ipa-signed
+          path: ios/build/export/*.ipa
+          if-no-files-found: error
