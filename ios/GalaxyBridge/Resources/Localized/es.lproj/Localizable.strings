@@ -778,3 +778,9 @@
 "Record on the watch" = "Grabar en el reloj";
 "Start heart rate on the watch" = "Empezar a medir el pulso en el reloj";
 "Watch not connected: heart rate is not recorded" = "Reloj sin conectar: no se registra el pulso";
+
+"Sent to the watch" = "Enviado al reloj";
+"%lld contacts · %lld events" = "%lld contactos · %lld eventos";
+"Calendar access denied: allow Full Access for GalaxyBridge in Settings" = "Sin acceso al calendario: en Ajustes, da a GalaxyBridge acceso total";
+"Open Settings to allow access" = "Abrir Ajustes para dar acceso";
+"Contacts access denied" = "Sin acceso a los contactos";

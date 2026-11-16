@@ -118,7 +118,8 @@ final class PimSync: ObservableObject {
         do {
             let granted = try await eventStore.requestFullAccessToEvents()
             guard granted else {
-                lastError = "Calendar access denied"
+                lastError = "Calendar access denied: allow Full Access for GalaxyBridge in Settings"
+                Breadcrumbs.drop("calendar: access denied")
                 return
             }
         } catch {
@@ -169,6 +170,7 @@ final class PimSync: ObservableObject {
         }
 
         eventCount = events.count
+        Breadcrumbs.drop("calendar: sent \(events.count) events for the next 14 days")
         lastSyncAt = Date()
         lastError = nil
         log.info("sent \(events.count, privacy: .public) events")

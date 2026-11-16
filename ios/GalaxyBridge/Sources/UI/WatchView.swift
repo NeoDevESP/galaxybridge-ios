@@ -130,6 +130,8 @@ struct WatchView: View {
             }
             .disabled(!client.isConnected)
 
+            PimStatusRows(pim: coordinator.pim)
+
             if !client.isConnected {
                 Button {
                     client.start()
@@ -215,6 +217,31 @@ struct WatchView: View {
         case ..<70: return "battery.50percent"
         case ..<90: return "battery.75percent"
         default: return "battery.100percent"
+        }
+    }
+}
+
+/// What the last contacts and calendar sync did. A denied permission is the
+/// usual reason the watch shows no agenda, and only Settings can undo it.
+private struct PimStatusRows: View {
+    @ObservedObject var pim: PimSync
+
+    var body: some View {
+        if pim.lastSyncAt != nil || pim.lastError != nil {
+            LabeledContent("Sent to the watch") { Text("\(pim.contactCount) contacts · \(pim.eventCount) events") }
+                .font(.caption)
+        }
+        if let error = pim.lastError {
+            Text(LocalizedStringKey(error))
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                Label("Open Settings to allow access", systemImage: "gear")
+            }
         }
     }
 }
