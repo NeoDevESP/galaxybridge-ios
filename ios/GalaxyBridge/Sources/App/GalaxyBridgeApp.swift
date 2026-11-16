@@ -5,6 +5,7 @@ struct GalaxyBridgeApp: App {
     @StateObject private var coordinator = BridgeCoordinator()
     @AppStorage("onboarding.done") private var onboarded = false
     @State private var splash = true
+    @Environment(\.scenePhase) private var phase
 
     init() {
         Breadcrumbs.startRun(
@@ -31,6 +32,9 @@ struct GalaxyBridgeApp: App {
             .task {
                 await coordinator.onAppear()
                 Reminders.reschedule(fitness: coordinator.fitness)
+            }
+            .onChange(of: phase) { _, value in
+                coordinator.setActive(value != .background)
             }
         }
     }

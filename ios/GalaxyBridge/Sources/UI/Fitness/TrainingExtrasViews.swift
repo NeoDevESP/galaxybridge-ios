@@ -416,7 +416,7 @@ struct IntervalRunView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { context in
+        TimelineView(.periodic(from: .now, by: 0.25)) { context in
             let now = pausedAt ?? context.date
             let elapsed = now.timeIntervalSince(started) - pausedTotal
             let state = phase(at: elapsed)

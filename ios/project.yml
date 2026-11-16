@@ -44,6 +44,14 @@ targets:
           UIColorName: LaunchBackground
           UIImageName: LaunchLogo
           UIImageRespectsSafeAreaInsets: true
+        # Portrait only, like Health and Fitness: the dashboards and the gym
+        # screen are laid out for it, and the phone turning sideways in a
+        # pocket or on a bench mid-set only gets in the way.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
         UIBackgroundModes:
           - bluetooth-central
           - processing

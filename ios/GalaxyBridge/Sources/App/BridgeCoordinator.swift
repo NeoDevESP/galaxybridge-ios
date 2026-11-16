@@ -163,7 +163,7 @@ final class BridgeCoordinator: ObservableObject {
             if health.authorized {
                 _ = await health.write(batch: HealthBatch(samples: batch.samples + fillers, cursor: batch.cursor))
             }
-            await dashboard.refresh()
+            await refreshDashboard()
 
         case .workout:
             guard let workout = BridgeCoder.decode(WorkoutSummary.self, from: payload) else { return }
@@ -178,7 +178,7 @@ final class BridgeCoordinator: ObservableObject {
             if health.authorized {
                 _ = await health.write(workout: workout)
             }
-            await dashboard.refresh()
+            await refreshDashboard()
 
         case .ecg:
             guard let record = BridgeCoder.decode(EcgRecord.self, from: payload) else {
@@ -192,7 +192,7 @@ final class BridgeCoordinator: ObservableObject {
             } catch {
                 note("ECG save failed: \(error.localizedDescription)")
             }
-            await dashboard.refresh()
+            await refreshDashboard()
 
         case .hello:
             guard let hello = BridgeCoder.decode(Hello.self, from: payload) else { return }
@@ -256,6 +256,31 @@ final class BridgeCoordinator: ObservableObject {
         }
     }
 
+    /// Whether the app is on screen. In the background nobody is looking at
+    /// the numbers, so the watch batches for longer and the dashboard is not
+    /// recomputed after every batch: fewer radio wake-ups on both devices.
+    private(set) var isActive = true
+    private var dashboardStale = false
+
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        pushHealthConfig()
+        if active && dashboardStale {
+            dashboardStale = false
+            Task { await dashboard.refresh() }
+        }
+    }
+
+    /// Refreshes the dashboard now if it is visible, otherwise on return.
+    private func refreshDashboard() async {
+        if isActive {
+            await dashboard.refresh()
+        } else {
+            dashboardStale = true
+        }
+    }
+
     /// Sends the settings, plus the body profile the watch's body composition
     /// sensor needs (height, weight, sex and age from Fitness).
     func pushHealthConfig() {
@@ -265,7 +290,10 @@ final class BridgeCoordinator: ObservableObject {
         client.sendHealthConfig(
             HealthConfig(
                 enabled: settings.enabled,
-                flushInterval: settings.flushMinutes * 60,
+                // The chosen interval while the app is open; at least 15
+                // minutes in the background, where a minute-by-minute flush
+                // only costs battery on both ends.
+                flushInterval: (isActive ? settings.flushMinutes : max(settings.flushMinutes, 15)) * 60,
                 continuousHeartRate: settings.continuousHeartRate,
                 profile: weight.map {
                     WatchBodyProfile(
