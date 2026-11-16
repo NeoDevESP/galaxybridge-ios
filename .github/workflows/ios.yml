@@ -78,10 +78,13 @@ jobs:
       # and secrets, wired in the "signed" job below.
       - name: Archive (unsigned)
         working-directory: ios
+        # This repo's run numbers restart at 1; the private repo shipped up to
+        # 1.0.36, and SideStore will not replace an app with a lower version.
         run: |
+          build=$(( ${{ github.run_number }} + 40 ))
           xcodebuild archive \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            MARKETING_VERSION="1.0.${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="$build" \
+            MARKETING_VERSION="1.0.$build" \
             -project GalaxyBridge.xcodeproj \
             -scheme GalaxyBridge \
             -configuration Release \
