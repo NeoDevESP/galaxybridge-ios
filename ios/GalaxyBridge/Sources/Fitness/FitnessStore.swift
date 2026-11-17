@@ -399,7 +399,9 @@ final class FitnessStore: ObservableObject {
     /// The routines for the watch's gym mode, with the weight to lift already
     /// suggested (double progression, else the last weight used).
     func watchPlan() -> GymPlan {
-        var routines = data.routines
+        // With none of your own yet, the built-in templates, so the watch's
+        // gym mode is usable from the first day.
+        var routines = data.routines.isEmpty ? FitnessLibrary.routines : data.routines
         if let today = todaysRoutine, !routines.contains(where: { $0.id == today.id }) {
             routines.insert(today, at: 0)
         }
