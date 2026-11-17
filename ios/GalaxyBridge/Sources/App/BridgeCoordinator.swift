@@ -194,12 +194,25 @@ final class BridgeCoordinator: ObservableObject {
             }
             await refreshDashboard()
 
+        case .gymLog:
+            guard let log = BridgeCoder.decode(GymLog.self, from: payload) else {
+                Breadcrumbs.drop("gym log could NOT be decoded (\(payload.count) bytes)")
+                return
+            }
+            let fresh = fitness.importWatchSession(log)
+            client.send(.workoutAck, payload: Data(log.uid.utf8))
+            let sets = log.exercises.reduce(0) { $0 + $1.sets.count }
+            note("gym session \(log.name) from the watch, \(sets) sets\(fresh ? "" : " (already stored)")")
+            Breadcrumbs.drop("gym: \(log.name), \(sets) sets from the watch, stored and confirmed")
+            pushGymPlan()
+
         case .hello:
             guard let hello = BridgeCoder.decode(Hello.self, from: payload) else { return }
             note("watch: \(hello.model), caps \(hello.capabilities.joined(separator: ","))")
             Breadcrumbs.drop("hello from the watch, pushing config")
             // The watch just (re)connected: push config and a fresh PIM copy.
             pushHealthConfig()
+            pushGymPlan()
             await resync(force: false)
 
         case .syncRequest:
@@ -266,6 +279,8 @@ final class BridgeCoordinator: ObservableObject {
         guard active != isActive else { return }
         isActive = active
         pushHealthConfig()
+        // Routines edited while the app was open reach the watch on leaving it.
+        if !active { pushGymPlan() }
         if active && dashboardStale {
             dashboardStale = false
             Task { await dashboard.refresh() }
@@ -279,6 +294,12 @@ final class BridgeCoordinator: ObservableObject {
         } else {
             dashboardStale = true
         }
+    }
+
+    /// The routines for the watch's gym mode, with suggested weights.
+    func pushGymPlan() {
+        guard client.isConnected else { return }
+        client.send(.gymPlan, payload: BridgeCoder.encode(fitness.watchPlan()))
     }
 
     /// Sends the settings, plus the body profile the watch's body composition

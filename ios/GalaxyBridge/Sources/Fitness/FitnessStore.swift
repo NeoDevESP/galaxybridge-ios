@@ -394,6 +394,65 @@ final class FitnessStore: ObservableObject {
         return kg / (metres * metres)
     }
 
+    // MARK: - Watch
+
+    /// The routines for the watch's gym mode, with the weight to lift already
+    /// suggested (double progression, else the last weight used).
+    func watchPlan() -> GymPlan {
+        var routines = data.routines
+        if let today = todaysRoutine, !routines.contains(where: { $0.id == today.id }) {
+            routines.insert(today, at: 0)
+        }
+        return GymPlan(
+            today: todaysRoutine?.id.uuidString,
+            restSeconds: data.restSeconds,
+            routines: routines.map { routine in
+                GymRoutineDTO(
+                    id: routine.id.uuidString,
+                    name: tr(routine.name),
+                    exercises: routine.items.map { item in
+                        GymPlanExercise(
+                            exerciseId: item.exerciseID,
+                            name: exerciseName(item.exerciseID),
+                            sets: max(1, item.sets),
+                            reps: item.reps,
+                            weight: suggestion(for: item.exerciseID, targetReps: item.reps)?.weight
+                                ?? lastWeight(for: item.exerciseID) ?? 0
+                        )
+                    }
+                )
+            }
+        )
+    }
+
+    /// Stores a session logged on the watch. Its id comes from the watch's
+    /// uid, so a log resent after a lost acknowledgement is not stored twice.
+    @discardableResult
+    func importWatchSession(_ log: GymLog) -> Bool {
+        let id = UUID(uuidString: String(log.uid.dropFirst("gym-".count))) ?? UUID()
+        guard !data.sessions.contains(where: { $0.id == id }) else { return false }
+        let session = GymSession(
+            id: id,
+            name: log.name,
+            start: Date(timeIntervalSince1970: TimeInterval(log.start) / 1000),
+            end: Date(timeIntervalSince1970: TimeInterval(log.end) / 1000),
+            exercises: log.exercises.map { exercise in
+                SessionExercise(
+                    exerciseID: exercise.exerciseId,
+                    sets: exercise.sets.map { SetEntry(weight: $0.weight, reps: $0.reps, done: true) }
+                )
+            },
+            avgHeartRate: log.avgHeartRate,
+            maxHeartRate: log.maxHeartRate,
+            energyKcal: log.energyKcal
+        )
+        mutate { data in
+            data.sessions.append(session)
+            data.sessions.sort { $0.start > $1.start }
+        }
+        return true
+    }
+
     // MARK: - Weekly plan
 
     /// The routine planned for a weekday (1 = Sunday).

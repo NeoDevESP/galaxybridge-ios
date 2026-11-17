@@ -26,6 +26,10 @@ enum MessageType: UInt8, Sendable {
     case workoutAck = 0x15
     case workoutControl = 0x16
     case workoutLive = 0x17
+    /// iPhone to watch: the gym routines, today's first. JSON `GymPlan`.
+    case gymPlan = 0x18
+    /// Watch to iPhone: a gym session logged on the wrist. JSON `GymLog`, acked with workoutAck.
+    case gymLog = 0x19
     case contacts = 0x20
     case calendar = 0x21
     case syncRequest = 0x22
@@ -338,6 +342,51 @@ struct CallStateDTO: Codable, Sendable {
 }
 
 /// The watch's running workout, every 5 s while it records.
+/// One exercise of a routine as the watch shows it, weight already suggested.
+struct GymPlanExercise: Codable, Sendable {
+    var exerciseId: String
+    var name: String
+    var sets: Int
+    var reps: Int
+    var weight: Double
+}
+
+struct GymRoutineDTO: Codable, Sendable {
+    var id: String
+    var name: String
+    var exercises: [GymPlanExercise]
+}
+
+struct GymPlan: Codable, Sendable {
+    var today: String?
+    var restSeconds: Int
+    var routines: [GymRoutineDTO]
+}
+
+struct GymSetLog: Codable, Sendable {
+    var weight: Double
+    var reps: Int
+    var at: Int64
+}
+
+struct GymExerciseLog: Codable, Sendable {
+    var exerciseId: String
+    var name: String
+    var sets: [GymSetLog]
+}
+
+/// A gym session logged on the watch. Times are epoch milliseconds.
+struct GymLog: Codable, Sendable {
+    var uid: String
+    var name: String
+    var start: Int64
+    var end: Int64
+    var exercises: [GymExerciseLog]
+    var avgHeartRate: Double?
+    var maxHeartRate: Double?
+    var energyKcal: Double?
+}
+
 struct WorkoutLive: Codable, Sendable, Equatable {
     var kind: String
     var activeMs: Int64
