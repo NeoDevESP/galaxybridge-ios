@@ -115,6 +115,15 @@ actor LocalHealthStore {
         return handle
     }
 
+    /// A consistent copy of the whole database at `destination`, taken while
+    /// the app keeps running (SQLite's VACUUM INTO).
+    func snapshot(to destination: URL) throws {
+        _ = try open()
+        try? FileManager.default.removeItem(at: destination)
+        let path = destination.path.replacingOccurrences(of: "'", with: "''")
+        try exec("VACUUM INTO '\(path)'")
+    }
+
     private func exec(_ sql: String) throws {
         guard let db else { throw StoreError.sqlite("not open") }
         var error: UnsafeMutablePointer<CChar>?

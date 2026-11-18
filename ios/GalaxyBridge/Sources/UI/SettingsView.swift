@@ -72,6 +72,8 @@ struct SettingsView: View {
                     Text("The new language applies the next time the app opens. You can also change it in the iPhone's Settings > GalaxyBridge > Language.")
                 }
 
+                BackupSection()
+
                 GoalsSection(dashboard: coordinator.dashboard)
 
                 Section {

@@ -11,6 +11,8 @@ struct GalaxyBridgeApp: App {
         Breadcrumbs.startRun(
             version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         )
+        // Before any store opens its files.
+        Backup.applyPendingRestore()
     }
 
     var body: some Scene {
@@ -32,6 +34,8 @@ struct GalaxyBridgeApp: App {
             .task {
                 await coordinator.onAppear()
                 Reminders.reschedule(fitness: coordinator.fitness)
+                Signature.scheduleReminder()
+                Backup.scheduleReminder()
             }
             .onChange(of: phase) { _, value in
                 coordinator.setActive(value != .background)
