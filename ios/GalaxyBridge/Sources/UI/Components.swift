@@ -54,28 +54,38 @@ struct RingStack: View {
     let stepGoal: Double
     let distance: Double
     let distanceGoal: Double
+    var size: CGFloat = 190
+
+    /// Starts empty so each ring sweeps round when the screen appears.
+    @State private var shown = false
+
+    static let energyColour = Color(red: 0.98, green: 0.07, blue: 0.31)
+    static let stepsColour = Color(red: 0.65, green: 1.0, blue: 0.0)
+    static let distanceColour = Color(red: 0.0, green: 0.88, blue: 1.0)
 
     var body: some View {
+        let line = size * 16 / 190
         ZStack {
             ActivityRing(
-                progress: energyGoal > 0 ? energy / energyGoal : 0,
-                colour: .red,
-                lineWidth: 16
+                progress: shown && energyGoal > 0 ? energy / energyGoal : 0,
+                colour: Self.energyColour,
+                lineWidth: line
             )
             ActivityRing(
-                progress: stepGoal > 0 ? steps / stepGoal : 0,
-                colour: .green,
-                lineWidth: 16
+                progress: shown && stepGoal > 0 ? steps / stepGoal : 0,
+                colour: Self.stepsColour,
+                lineWidth: line
             )
-            .padding(22)
+            .padding(size * 22 / 190)
             ActivityRing(
-                progress: distanceGoal > 0 ? distance / distanceGoal : 0,
-                colour: .blue,
-                lineWidth: 16
+                progress: shown && distanceGoal > 0 ? distance / distanceGoal : 0,
+                colour: Self.distanceColour,
+                lineWidth: line
             )
-            .padding(44)
+            .padding(size * 44 / 190)
         }
-        .frame(width: 190, height: 190)
+        .frame(width: size, height: size)
+        .onAppear { shown = true }
         .accessibilityElement()
         .accessibilityLabel(
             "\(Int(energy)) of \(Int(energyGoal)) kilocalories, \(Int(steps)) of \(Int(stepGoal)) steps, "

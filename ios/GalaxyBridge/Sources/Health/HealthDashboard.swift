@@ -128,17 +128,20 @@ final class HealthDashboard: ObservableObject {
         restingHeartRate = HealthMath.restingEstimate(fiveMinuteAverages: heartToday.map(\.value))
         hourlySteps = await hourly
 
-        // Last night: sleep that ended today. Awake stretches (value 1) are
-        // not counted as sleep.
-        let nightSegments = await sleep.filter { $0.end >= midnight && $0.value != 1 }
-        if nightSegments.isEmpty {
+        // Last night: the longest stretch of sleep that ended today, never a
+        // nap. Awake stretches (value 1) are not counted as sleep.
+        let mainNight = SleepSessions.split(await sleep)
+            .filter { $0.end >= midnight && !$0.isNap }
+            .max { $0.asleep < $1.asleep }
+        if let mainNight {
+            let asleepParts = mainNight.segments.filter { $0.value != 1 }
+            sleepLastNight = mainNight.asleep
+            bedtime = asleepParts.map(\.start).min()
+            wakeTime = asleepParts.map(\.end).max()
+        } else {
             sleepLastNight = nil
             bedtime = nil
             wakeTime = nil
-        } else {
-            sleepLastNight = nightSegments.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
-            bedtime = nightSegments.map(\.start).min()
-            wakeTime = nightSegments.map(\.end).max()
         }
 
         workouts = await recent.map(Workout.init(summary:))
@@ -150,10 +153,8 @@ final class HealthDashboard: ObservableObject {
         latest = latestByKind
         latestEcg = await store.ecgRecords(limit: 1).first
 
-        let all = await sleep
-        let asleepParts = all.filter { $0.end >= midnight && $0.value != 1 }
-        if let first = asleepParts.first?.start, let last = asleepParts.last?.end {
-            lastNight = all.filter { $0.start >= first && $0.end <= last }
+        if let mainNight {
+            lastNight = mainNight.segments
             func time(_ stage: Double) -> TimeInterval {
                 lastNight.filter { $0.value == stage }.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
             }

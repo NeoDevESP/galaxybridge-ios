@@ -26,19 +26,47 @@ struct DashboardView: View {
                         waitingCard
                     }
 
-                    VStack(spacing: 16) {
+                    Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)).uppercased())
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 18) {
                         RingStack(
                             energy: dashboard.today.activeEnergy,
                             energyGoal: dashboard.energyGoal,
                             steps: dashboard.today.steps,
                             stepGoal: dashboard.stepGoal,
                             distance: dashboard.today.distanceMeters,
-                            distanceGoal: dashboard.distanceGoal
+                            distanceGoal: dashboard.distanceGoal,
+                            size: 140
                         )
-                        ringLegend
+                        VStack(alignment: .leading, spacing: 10) {
+                            heroValue(
+                                "Energy",
+                                dashboard.today.activeEnergy.noDecimals,
+                                "/ " + dashboard.energyGoal.noDecimals + " kcal",
+                                RingStack.energyColour
+                            )
+                            heroValue(
+                                "Steps",
+                                dashboard.today.steps.noDecimals,
+                                "/ " + dashboard.stepGoal.noDecimals,
+                                RingStack.stepsColour
+                            )
+                            heroValue(
+                                "Distance",
+                                (dashboard.today.distanceMeters / 1000).oneDecimal,
+                                "/ " + (dashboard.distanceGoal / 1000).oneDecimal + " km",
+                                RingStack.distanceColour
+                            )
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .padding(18)
                     .frame(maxWidth: .infinity)
-                    .cardStyle(padding: 18)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .environment(\.colorScheme, .dark)
 
                     ReadinessCard(readiness: dashboard.readiness, stress: dashboard.stress)
 
@@ -261,6 +289,26 @@ struct DashboardView: View {
         }
         return bed.formatted(date: .omitted, time: .shortened)
             + " – " + wake.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// One line beside the rings: what, how much, and the goal.
+    private func heroValue(_ title: String, _ value: String, _ goal: String, _ colour: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(tr(title))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value)
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(goal)
+                    .font(.system(.footnote, design: .rounded, weight: .semibold))
+            }
+            .foregroundStyle(colour)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+        }
     }
 
     private var ringLegend: some View {

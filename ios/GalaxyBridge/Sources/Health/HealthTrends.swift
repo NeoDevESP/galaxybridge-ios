@@ -46,6 +46,8 @@ final class HealthTrends: ObservableObject {
         var awake: TimeInterval = 0
         var bedtime: Date?
         var wake: Date?
+        /// A daytime stretch, shown apart and never added to a night.
+        var isNap = false
 
         var asleep: TimeInterval { deep + core + rem }
         /// False when the watch only reported asleep/awake, which is all Wear
@@ -199,30 +201,44 @@ final class HealthTrends: ObservableObject {
 
     // MARK: - Sleep
 
-    /// Sleep grouped by the morning it ended on.
-    func sleepNights(days: Int) async -> [SleepNight] {
+    /// Sleep grouped by the morning it ended on, one night per morning; with
+    /// `naps`, the daytime stretches instead. Stretches are split where
+    /// nothing was recorded for a while, so a nap never inflates a night.
+    func sleepNights(days: Int, naps: Bool = false) async -> [SleepNight] {
         let start = windowStart(days: days).addingTimeInterval(-18 * 3600)
         let segments = await store.segments(.sleep, from: start)
         let calendar = Calendar.current
         var nights: [Date: SleepNight] = [:]
+        var napList: [SleepNight] = []
 
-        for segment in segments {
-            let night = calendar.startOfDay(for: segment.end)
-            var entry = nights[night] ?? SleepNight(id: night, night: night)
-            let duration = segment.end.timeIntervalSince(segment.start)
-            // Same stage ordinals the watch uses: 1 awake, 2 REM, 3 light,
-            // 4 deep, anything else asleep without a stage.
-            switch Int(segment.value) {
-            case 1: entry.awake += duration
-            case 2: entry.rem += duration
-            case 4: entry.deep += duration
-            default: entry.core += duration
+        for session in SleepSessions.split(segments) {
+            let night = calendar.startOfDay(for: session.end)
+            var entry = session.isNap
+                ? SleepNight(id: session.start, night: night, isNap: true)
+                : (nights[night] ?? SleepNight(id: night, night: night))
+            for segment in session.segments {
+                let duration = segment.end.timeIntervalSince(segment.start)
+                // Same stage ordinals the watch uses: 1 awake, 2 REM, 3 light,
+                // 4 deep, anything else asleep without a stage.
+                switch Int(segment.value) {
+                case 1: entry.awake += duration
+                case 2: entry.rem += duration
+                case 4: entry.deep += duration
+                default: entry.core += duration
+                }
+                if Int(segment.value) != 1 {
+                    entry.bedtime = min(entry.bedtime ?? segment.start, segment.start)
+                    entry.wake = max(entry.wake ?? segment.end, segment.end)
+                }
             }
-            if Int(segment.value) != 1 {
-                entry.bedtime = min(entry.bedtime ?? segment.start, segment.start)
-                entry.wake = max(entry.wake ?? segment.end, segment.end)
+            if session.isNap {
+                if entry.asleep > 0 { napList.append(entry) }
+            } else {
+                nights[night] = entry
             }
-            nights[night] = entry
+        }
+        if naps {
+            return napList.sorted { $0.night < $1.night }
         }
         return nights.values.filter { $0.asleep > 0 }.sorted { $0.night < $1.night }
     }

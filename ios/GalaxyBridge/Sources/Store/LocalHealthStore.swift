@@ -269,6 +269,20 @@ actor LocalHealthStore {
         return result
     }
 
+    /// Removes one metric's samples lying wholly inside the range: how a
+    /// wrongly recorded night or nap is taken out.
+    @discardableResult
+    func deleteSamples(_ metric: Metric, from start: Date, to end: Date) throws -> Int {
+        let db = try open()
+        let statement = try prepare("DELETE FROM samples WHERE metric = ? AND start_ms >= ? AND end_ms <= ?")
+        defer { sqlite3_finalize(statement) }
+        bindAll(statement, [metric.rawValue, Self.millis(start), Self.millis(end)])
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw StoreError.sqlite(String(cString: sqlite3_errmsg(db)))
+        }
+        return Int(sqlite3_changes(db))
+    }
+
     func deleteAll() throws {
         _ = try open()
         try exec("DELETE FROM samples")

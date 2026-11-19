@@ -804,3 +804,8 @@
 "Restore" = "Restaurar";
 "Ready. Close the app; it restores when it opens again." = "Listo. Cierra la app; se restaura al volver a abrirla.";
 "Your current data is kept aside as a copy, but the app will show the backup's data from now on." = "Tus datos actuales se guardan aparte como copia, pero la app mostrará los de la copia desde ahora.";
+"Naps" = "Siestas";
+"Delete this night" = "Borrar esta noche";
+"Delete this nap" = "Borrar esta siesta";
+"Delete this sleep from GalaxyBridge and Apple Health?" = "¿Borrar este sueño de GalaxyBridge y de Salud?";
+"Energy" = "Energía";

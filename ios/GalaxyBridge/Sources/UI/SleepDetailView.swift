@@ -11,6 +11,7 @@ struct SleepDetailView: View {
     @EnvironmentObject private var coordinator: BridgeCoordinator
 
     @State private var nights: [HealthTrends.SleepNight] = []
+    @State private var naps: [HealthTrends.SleepNight] = []
     @State private var window: HealthTrends.Window = .week
     @State private var loading = true
 
@@ -34,6 +35,9 @@ struct SleepDetailView: View {
                     summary
                     if hasStages { legend }
                     nightList
+                }
+                if !naps.isEmpty {
+                    napList
                 }
 
                 Text("The watch tracks each night itself: it notices when you fall asleep, keeps every heartbeat and movement, and estimates awake, REM, light and deep sleep from them. An estimate from wrist sensors, not a sleep study.")
@@ -189,6 +193,41 @@ struct SleepDetailView: View {
         }
     }
 
+    private var napList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Naps").font(.headline)
+            ForEach(naps.reversed()) { nap in
+                NavigationLink {
+                    NightDetailView(night: nap)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(nap.night.formatted(date: .abbreviated, time: .omitted))
+                                .font(.subheadline)
+                            if let bed = nap.bedtime, let wake = nap.wake {
+                                Text(
+                                    bed.formatted(date: .omitted, time: .shortened) + " – "
+                                        + wake.formatted(date: .omitted, time: .shortened)
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text(nap.asleep.hoursMinutes)
+                            .font(.subheadline)
+                            .monospacedDigit()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .cardStyle(padding: 10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 6) {
             Image(systemName: "bed.double")
@@ -245,6 +284,7 @@ struct SleepDetailView: View {
     private func load() async {
         loading = true
         nights = await coordinator.trends.sleepNights(days: window.rawValue)
+        naps = await coordinator.trends.sleepNights(days: window.rawValue, naps: true)
         loading = false
     }
 }
@@ -254,7 +294,9 @@ struct NightDetailView: View {
     @EnvironmentObject private var coordinator: BridgeCoordinator
     let night: HealthTrends.SleepNight
 
+    @Environment(\.dismiss) private var dismiss
     @State private var segments: [LocalHealthStore.Segment] = []
+    @State private var confirmDelete = false
 
     private var score: SleepScore {
         let staged = night.deep + night.rem > 0
@@ -290,6 +332,24 @@ struct NightDetailView: View {
                 Text("Duration counts for half: 7 to 9 hours gets full marks. Deep and REM get full marks at 15% and 20% of the night, the usual adult share. Each wake-up costs two points of continuity.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button(role: .destructive) {
+                    confirmDelete = true
+                } label: {
+                    Label(night.isNap ? "Delete this nap" : "Delete this night", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(segments.isEmpty)
+                .confirmationDialog(
+                    "Delete this sleep from GalaxyBridge and Apple Health?",
+                    isPresented: $confirmDelete,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive) {
+                        Task { await delete() }
+                    }
+                }
             }
             .padding()
         }
@@ -300,8 +360,22 @@ struct NightDetailView: View {
             let from = night.night.addingTimeInterval(-18 * 3600)
             let to = night.night.addingTimeInterval(18 * 3600)
             let all = await coordinator.store.segments(.sleep, from: from, to: to)
-            let calendar = Calendar.current
-            segments = all.filter { calendar.startOfDay(for: $0.end) == night.night }
+            // Only this stretch: a nap and the night before it are kept apart.
+            segments = SleepSessions.split(all).first { session in
+                guard let bed = night.bedtime else { return false }
+                return session.start <= bed && session.end >= bed
+            }?.segments ?? []
         }
+    }
+
+    /// For a night or nap the watch recorded wrongly (sitting still taken for
+    /// sleep): gone from this app and from what it wrote to Apple Health.
+    private func delete() async {
+        guard let first = segments.map(\.start).min(), let last = segments.map(\.end).max() else { return }
+        let removed = (try? await coordinator.store.deleteSamples(.sleep, from: first, to: last)) ?? 0
+        await coordinator.health.deleteSleep(from: first, to: last)
+        Breadcrumbs.drop("sleep: deleted \(removed) segments, \(first.formatted()) to \(last.formatted())")
+        await coordinator.dashboard.refresh()
+        dismiss()
     }
 }

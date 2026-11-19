@@ -92,6 +92,20 @@ final class HealthBridge: ObservableObject {
     }
 
     /// Writes a batch and returns true when the watch may delete those rows.
+    /// Removes the sleep this app wrote to Apple Health inside the range.
+    func deleteSleep(from start: Date, to end: Date) async {
+        guard authorized, let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return }
+        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate, .strictEndDate]),
+            HKQuery.predicateForObjects(from: HKSource.default()),
+        ])
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            store.deleteObjects(of: type, predicate: predicate) { _, _, _ in
+                continuation.resume()
+            }
+        }
+    }
+
     func write(batch: HealthBatch) async -> Bool {
         guard authorized else {
             // Not acknowledged on purpose: the watch's spool is the only copy

@@ -15,6 +15,7 @@ struct RootView: View {
                 .tabItem { Label("Browse", systemImage: "square.grid.2x2.fill") }
 
             FitnessView()
+                .environment(\.colorScheme, .dark)
                 .tabItem { Label("Fitness", systemImage: "figure.strengthtraining.traditional") }
 
             WatchView()
