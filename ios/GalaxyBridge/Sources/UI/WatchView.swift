@@ -43,6 +43,7 @@ struct WatchView: View {
         Section {
             HStack(spacing: 14) {
                 Image(systemName: "applewatch.side.right")
+                    .symbolEffect(.pulse, isActive: !client.isConnected)
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 3) {

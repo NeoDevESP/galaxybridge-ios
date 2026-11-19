@@ -117,7 +117,11 @@ struct BrowseView: View {
             Label {
                 Text(kind.title)
             } icon: {
-                Image(systemName: kind.systemImage).foregroundStyle(kind.tint)
+                Image(systemName: kind.systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(kind.tint.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
         }
     }
@@ -356,6 +360,7 @@ struct WorkoutRow: View {
 
 struct WorkoutDetailView: View {
     let workout: HealthDashboard.Workout
+    @State private var exportURL: URL?
 
     private var route: [CLLocationCoordinate2D] {
         (workout.summary.route ?? []).map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
@@ -426,7 +431,19 @@ struct WorkoutDetailView: View {
 
                 if trace.count > 2 {
                     heartRateChart
+                        .drawIn()
                     zonesBreakdown
+                }
+
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Label("Export to Strava or other apps", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
                 }
 
                 Text(
@@ -440,6 +457,7 @@ struct WorkoutDetailView: View {
         }
         .groupedBackground()
         .navigationTitle(workout.activity)
+        .task { exportURL = WorkoutExport.tcx(workout.summary) }
     }
 
     /// One reading every 10 s from the watch.
