@@ -169,6 +169,7 @@ struct LastNightCard: View {
                 }
             }
             HypnogramView(segments: segments)
+                .drawIn()
             HStack {
                 ForEach([4.0, 3.0, 2.0, 1.0], id: \.self) { stage in
                     VStack(spacing: 2) {

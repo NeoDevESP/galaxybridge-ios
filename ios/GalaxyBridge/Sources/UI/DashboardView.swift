@@ -11,6 +11,7 @@ struct DashboardView: View {
     @ObservedObject private var dashboard: HealthDashboard
 
     @State private var insights: [HealthTrends.Insight] = []
+    @Namespace private var zoom
 
     init(dashboard: HealthDashboard) {
         self.dashboard = dashboard
@@ -44,19 +45,19 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             heroValue(
                                 "Energy",
-                                dashboard.today.activeEnergy.noDecimals,
+                                dashboard.today.activeEnergy,
                                 "/ " + dashboard.energyGoal.noDecimals + " kcal",
                                 RingStack.energyColour
                             )
                             heroValue(
                                 "Steps",
-                                dashboard.today.steps.noDecimals,
+                                dashboard.today.steps,
                                 "/ " + dashboard.stepGoal.noDecimals,
                                 RingStack.stepsColour
                             )
                             heroValue(
                                 "Distance",
-                                (dashboard.today.distanceMeters / 1000).oneDecimal,
+                                dashboard.today.distanceMeters / 1000,
                                 "/ " + (dashboard.distanceGoal / 1000).oneDecimal + " km",
                                 RingStack.distanceColour
                             )
@@ -65,10 +66,14 @@ struct DashboardView: View {
                     }
                     .padding(18)
                     .frame(maxWidth: .infinity)
-                    .background(Color.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .background {
+                        AuroraBackground()
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
                     .environment(\.colorScheme, .dark)
 
                     ReadinessCard(readiness: dashboard.readiness, stress: dashboard.stress)
+                        .scrollSettle()
 
                     metricGrid
 
@@ -97,6 +102,7 @@ struct DashboardView: View {
             .navigationTitle("Summary")
             .navigationDestination(for: HealthKind.self) { kind in
                 MetricDetailView(kind: kind)
+                    .zoomDestination(kind, in: zoom)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -200,6 +206,8 @@ struct DashboardView: View {
             )
         }
         .buttonStyle(.plain)
+        .zoomSource(kind, in: zoom)
+        .scrollSettle()
     }
 
     static func when(_ date: Date) -> String {
@@ -222,10 +230,13 @@ struct DashboardView: View {
         if dashboard.lastNight.count > 1 {
             NavigationLink {
                 SleepDetailView()
+                    .zoomDestination("sleep", in: zoom)
             } label: {
                 LastNightCard(segments: dashboard.lastNight, score: dashboard.sleepScore)
             }
             .buttonStyle(.plain)
+            .zoomSource("sleep", in: zoom)
+            .scrollSettle()
         } else {
             plainSleepRow
         }
@@ -292,16 +303,14 @@ struct DashboardView: View {
     }
 
     /// One line beside the rings: what, how much, and the goal.
-    private func heroValue(_ title: String, _ value: String, _ goal: String, _ colour: Color) -> some View {
+    private func heroValue(_ title: String, _ value: Double, _ goal: String, _ colour: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(tr(title))
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
+                RollingNumber(value: value, decimals: title == "Distance" ? 1 : 0)
                     .font(.system(.title2, design: .rounded, weight: .bold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
                 Text(goal)
                     .font(.system(.footnote, design: .rounded, weight: .semibold))
             }
@@ -437,11 +446,14 @@ struct DashboardView: View {
                 ForEach(dashboard.workouts.prefix(3)) { workout in
                     NavigationLink {
                         WorkoutDetailView(workout: workout)
+                            .zoomDestination(workout.id, in: zoom)
                     } label: {
                         WorkoutRow(workout: workout)
                             .cardStyle(padding: 12)
                     }
                     .buttonStyle(.plain)
+                    .zoomSource(workout.id, in: zoom)
+                    .scrollSettle()
                 }
             }
         }
@@ -473,5 +485,6 @@ struct DashboardView: View {
             content()
         }
         .cardStyle()
+        .scrollSettle()
     }
 }

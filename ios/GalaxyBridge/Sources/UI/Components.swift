@@ -41,7 +41,8 @@ struct ActivityRing: View {
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.8, dampingFraction: 0.85), value: progress)
+                .shadow(color: progress >= 1 ? colour.opacity(0.65) : .clear, radius: lineWidth * 0.6)
+                .animation(.spring(response: 1.0, dampingFraction: 0.82), value: progress)
         }
     }
 }
@@ -62,6 +63,13 @@ struct RingStack: View {
     static let energyColour = Color(red: 0.98, green: 0.07, blue: 0.31)
     static let stepsColour = Color(red: 0.65, green: 1.0, blue: 0.0)
     static let distanceColour = Color(red: 0.0, green: 0.88, blue: 1.0)
+
+    /// How many rings are closed, so closing one taps the wrist of the phone.
+    private var closedRings: Int {
+        guard shown else { return 0 }
+        return [energyGoal > 0 && energy >= energyGoal, stepGoal > 0 && steps >= stepGoal,
+                distanceGoal > 0 && distance >= distanceGoal].filter { $0 }.count
+    }
 
     var body: some View {
         let line = size * 16 / 190
@@ -86,6 +94,7 @@ struct RingStack: View {
         }
         .frame(width: size, height: size)
         .onAppear { shown = true }
+        .sensoryFeedback(.success, trigger: closedRings) { old, new in new > old }
         .accessibilityElement()
         .accessibilityLabel(
             "\(Int(energy)) of \(Int(energyGoal)) kilocalories, \(Int(steps)) of \(Int(stepGoal)) steps, "
@@ -96,6 +105,7 @@ struct RingStack: View {
 
 /// One metric tile. `value` is pre-formatted; this view does not guess units.
 struct MetricTile: View {
+    @State private var appeared = false
     let title: String
     let value: String
     let unit: String?
@@ -110,6 +120,7 @@ struct MetricTile: View {
             HStack(spacing: 5) {
                 Image(systemName: systemImage)
                     .symbolRenderingMode(.hierarchical)
+                    .symbolEffect(.bounce, value: appeared)
                 Text(tr(title))
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -145,6 +156,7 @@ struct MetricTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle(padding: 12)
+        .onAppear { appeared = true }
     }
 }
 

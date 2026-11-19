@@ -24,6 +24,7 @@ struct SleepDetailView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .sensoryFeedback(.selection, trigger: window)
 
                 if loading {
                     ProgressView().frame(height: 220).frame(maxWidth: .infinity)
@@ -31,6 +32,7 @@ struct SleepDetailView: View {
                     emptyState
                 } else {
                     chart
+                        .drawIn()
                         .cardStyle()
                     summary
                     if hasStages { legend }
