@@ -114,14 +114,15 @@ final class HealthBridge: ObservableObject {
             return false
         }
         var objects: [HKObject] = []
-        var newUIDs: Set<String> = []
+        var uids: [String] = []
         let alreadyWritten = writtenUIDs
 
         for sample in batch.samples where !alreadyWritten.contains(sample.uid) {
             guard let object = makeSample(sample) else { continue }
             objects.append(object)
-            newUIDs.insert(sample.uid)
+            uids.append(sample.uid)
         }
+        let newUIDs = Set(uids)
 
         guard !objects.isEmpty else {
             // Nothing new: still ACK, otherwise the watch retries forever.
@@ -135,6 +136,32 @@ final class HealthBridge: ObservableObject {
             lastWriteAt = Date()
             lastError = nil
             log.info("wrote \(objects.count, privacy: .public) samples to HealthKit")
+            return true
+        } catch let error as HKError where error.code == .errorInvalidArgument {
+            // One sample Apple Health will never take used to fail the whole
+            // batch, every time: no ACK, and the watch resent it forever.
+            // Save them one by one and let only the rejected ones go.
+            var saved: Set<String> = []
+            var rejected = 0
+            for (object, uid) in zip(objects, uids) {
+                do {
+                    try await store.save(object)
+                    saved.insert(uid)
+                } catch let single as HKError where single.code == .errorInvalidArgument {
+                    rejected += 1
+                    saved.insert(uid)
+                } catch {
+                    // Anything else (phone locked...) is worth a retry.
+                    lastError = error.localizedDescription
+                    writtenUIDs = alreadyWritten.union(saved)
+                    return false
+                }
+            }
+            writtenUIDs = alreadyWritten.union(saved)
+            samplesWritten += objects.count - rejected
+            lastWriteAt = Date()
+            Breadcrumbs.drop("health: Apple Health refused \(rejected) of \(objects.count) samples, the rest saved")
+            log.error("HealthKit refused \(rejected, privacy: .public) samples: \(error.localizedDescription, privacy: .public)")
             return true
         } catch {
             lastError = error.localizedDescription
@@ -211,7 +238,8 @@ final class HealthBridge: ObservableObject {
     private func makeSample(_ sample: HealthSample) -> HKObject? {
         let start = Date(timeIntervalSince1970: Double(sample.start) / 1000)
         let end = Date(timeIntervalSince1970: Double(sample.end) / 1000)
-        guard end >= start else { return nil }
+        // A NaN or a negative reading would make Apple Health refuse it.
+        guard end >= start, sample.value.isFinite, sample.value >= 0 else { return nil }
         let meta = metadata(uid: sample.uid)
 
         switch sample.metric {
