@@ -290,6 +290,18 @@ struct WorkoutSummary: Codable, Sendable {
     var activeDurationMs: Int64?
     /// Heart rate every 10 s while recording.
     var heartRateTrace: [Int]?
+    /// Average steps per minute while moving.
+    var cadenceAvg: Double?
+    /// Metres climbed.
+    var elevationGainMeters: Double?
+    /// Active milliseconds of each full kilometre.
+    var splitsMs: [Int64]?
+    /// Banister TRIMP worked out on the watch.
+    var trainingLoad: Double?
+    /// Hours to recover from this session.
+    var recoveryHours: Int?
+    /// VO2max from pace and heart rate, ml/kg/min.
+    var vo2Max: Double?
 }
 
 struct Contact: Codable, Sendable {

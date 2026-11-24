@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 @preconcurrency import HealthKit
 import os
 
@@ -53,6 +54,11 @@ final class HealthBridge: ObservableObject {
             HKQuantityType(.heartRate),
             HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.distanceWalkingRunning),
+            // Rides are filed as cycling distance: without asking for it the
+            // first ride with a distance failed to save, and the watch resent it.
+            HKQuantityType(.distanceCycling),
+            HKQuantityType(.vo2Max),
+            HKSeriesType.workoutRoute(),
             HKQuantityType(.flightsClimbed),
             HKQuantityType(.oxygenSaturation),
             HKQuantityType(.restingHeartRate),
@@ -216,12 +222,48 @@ final class HealthBridge: ObservableObject {
                     )
                 )
             }
+            // The pulse the watch recorded every 10 s, inside the workout, so
+            // Fitness draws its heart-rate chart and zones.
+            for (index, bpm) in (workout.heartRateTrace ?? []).enumerated() where bpm > 0 {
+                let at = start.addingTimeInterval(Double(index) * 10)
+                guard at <= end else { break }
+                samples.append(HKQuantitySample(
+                    type: HKQuantityType(.heartRate),
+                    quantity: HKQuantity(unit: HKUnit.count().unitDivided(by: .minute()), doubleValue: Double(bpm)),
+                    start: at,
+                    end: at,
+                    device: Self.device,
+                    metadata: nil
+                ))
+            }
             if !samples.isEmpty {
                 try await builder.addSamples(samples)
             }
+            if let climb = workout.elevationGainMeters, climb > 0 {
+                try await builder.addMetadata([HKMetadataKeyElevationAscended: HKQuantity(unit: .meter(), doubleValue: climb)])
+            }
 
             try await builder.endCollection(at: end)
-            _ = try await builder.finishWorkout()
+            let saved = try await builder.finishWorkout()
+            if let saved {
+                await addRoute(workout, to: saved)
+            }
+            // Cardio fitness, as Apple Health shows it from an Apple Watch.
+            if let vo2 = workout.vo2Max, vo2.isFinite, vo2 > 0 {
+                let unit = HKUnit(from: "ml/kg*min")
+                do {
+                    try await store.save(HKQuantitySample(
+                        type: HKQuantityType(.vo2Max),
+                        quantity: HKQuantity(unit: unit, doubleValue: vo2),
+                        start: end,
+                        end: end,
+                        device: Self.device,
+                        metadata: metadata(uid: workout.uid + "-vo2")
+                    ))
+                } catch {
+                    log.error("VO2max save failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
             writtenUIDs = writtenUIDs.union([workout.uid])
             lastWriteAt = Date()
             log.info("wrote workout \(workout.type, privacy: .public)")
@@ -230,6 +272,30 @@ final class HealthBridge: ObservableObject {
             lastError = error.localizedDescription
             log.error("workout save failed: \(error.localizedDescription, privacy: .public)")
             return false
+        }
+    }
+
+    /// The GPS track as a workout route, so Fitness shows the map. A route
+    /// that fails is logged and left out: the workout itself is saved.
+    private func addRoute(_ workout: WorkoutSummary, to saved: HKWorkout) async {
+        let points = workout.route ?? []
+        guard points.count > 1 else { return }
+        let locations = points.map { p in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon),
+                altitude: p.alt ?? 0,
+                horizontalAccuracy: p.hAcc ?? 10,
+                verticalAccuracy: p.alt == nil ? -1 : 10,
+                timestamp: Date(timeIntervalSince1970: Double(p.t) / 1000)
+            )
+        }
+        let builder = HKWorkoutRouteBuilder(healthStore: store, device: Self.device)
+        do {
+            try await builder.insertRouteData(locations)
+            try await builder.finishRoute(with: saved, metadata: nil)
+        } catch {
+            Breadcrumbs.drop("health: route not saved: \(error.localizedDescription)")
+            log.error("route save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

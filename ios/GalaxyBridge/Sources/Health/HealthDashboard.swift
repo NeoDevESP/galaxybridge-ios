@@ -49,6 +49,8 @@ final class HealthDashboard: ObservableObject {
     @Published private(set) var bedtime: Date?
     @Published private(set) var wakeTime: Date?
     @Published private(set) var workouts: [Workout] = []
+    @Published private(set) var training: TrainingStatus?
+    @Published private(set) var nightSignals: NightSignals?
     @Published private(set) var hourlySteps: [LocalHealthStore.TimePoint] = []
     @Published private(set) var heartToday: [LocalHealthStore.TimePoint] = []
     @Published private(set) var lastSampleAt: Date?
@@ -186,6 +188,24 @@ final class HealthDashboard: ObservableObject {
             stepsYesterday: stepsYesterday,
             stepGoal: stepGoal
         )
+        training = TrainingStatus.compute(await store.workouts(limit: 200, since: now.addingTimeInterval(-29 * 86_400)))
+
+        // Last night runs from 6 pm yesterday to noon today; the baseline is
+        // the fortnight before it.
+        let nightStart = midnight.addingTimeInterval(-6 * 3600)
+        let nightEnd = midnight.addingTimeInterval(12 * 3600)
+        let skinNight = Self.mean(await store.values(.skinTemperature, from: nightStart, to: nightEnd))
+        let skinBaseline = Self.mean(await store.values(.skinTemperature, from: nightStart.addingTimeInterval(-14 * 86_400), to: nightStart))
+        let oxygen = await store.values(.spo2, from: nightStart, to: nightEnd).filter { $0 > 0.5 && $0 <= 1 }
+        let skinDelta: Double? = if let skinNight, let skinBaseline { skinNight - skinBaseline } else { nil }
+        let restingDelta: Double? = if let restingHeartRate, let restingBaseline { restingHeartRate - restingBaseline } else { nil }
+        nightSignals = (skinDelta == nil && restingDelta == nil && oxygen.isEmpty) ? nil : NightSignals(
+            skinDelta: skinDelta,
+            restingDelta: restingDelta,
+            oxygenMin: oxygen.min(),
+            oxygenDrops: oxygen.filter { $0 < 0.90 }.count
+        )
+
         if let latestHrv = hrv?.value, let hrvBaseline {
             stress = StressLevel.score(hrv: latestHrv, baseline: hrvBaseline)
         } else {

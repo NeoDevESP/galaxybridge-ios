@@ -427,6 +427,25 @@ struct WorkoutDetailView: View {
                         systemImage: "bolt.heart.fill",
                         tint: .pink
                     )
+                    if let cadence = workout.summary.cadenceAvg {
+                        MetricTile(title: "Cadence", value: cadence.noDecimals, unit: "spm", systemImage: "shoeprints.fill", tint: .green)
+                    }
+                    if let climb = workout.summary.elevationGainMeters {
+                        MetricTile(title: "Elevation gain", value: climb.noDecimals, unit: "m", systemImage: "mountain.2.fill", tint: .brown)
+                    }
+                    if let load = workout.summary.trainingLoad {
+                        MetricTile(title: "Training load", value: load.noDecimals, unit: nil, systemImage: "gauge.with.needle.fill", tint: .orange)
+                    }
+                    if let hours = workout.summary.recoveryHours {
+                        MetricTile(title: "Recovery", value: "\(hours)", unit: "h", systemImage: "bed.double.fill", tint: .indigo)
+                    }
+                    if let vo2 = workout.summary.vo2Max {
+                        MetricTile(title: "Cardio fitness", value: vo2.oneDecimal, unit: "VO₂max", systemImage: "lungs.fill", tint: .cyan)
+                    }
+                }
+
+                if let splits = workout.summary.splitsMs, !splits.isEmpty {
+                    splitsCard(splits)
                 }
 
                 if trace.count > 2 {
@@ -462,6 +481,31 @@ struct WorkoutDetailView: View {
 
     /// One reading every 10 s from the watch.
     private var trace: [Int] { workout.summary.heartRateTrace ?? [] }
+
+    /// Each kilometre's time, the fastest in green, as running apps show them.
+    private func splitsCard(_ splits: [Int64]) -> some View {
+        let fastest = splits.min() ?? 0
+        let slowest = splits.max() ?? 1
+        return VStack(alignment: .leading, spacing: 8) {
+            Label("Splits", systemImage: "flag.2.crossed.fill")
+                .font(.headline)
+            ForEach(Array(splits.enumerated()), id: \.offset) { index, ms in
+                HStack {
+                    Text("Km \(index + 1)").font(.subheadline).frame(width: 52, alignment: .leading)
+                    GeometryReader { geo in
+                        Capsule()
+                            .fill(ms == fastest ? Color.green : Color.cyan.opacity(0.6))
+                            .frame(width: max(8, geo.size.width * Double(ms) / Double(max(slowest, 1))))
+                    }
+                    .frame(height: 10)
+                    Text(String(format: "%d:%02d", ms / 60_000, (ms / 1000) % 60))
+                        .font(.subheadline.monospacedDigit())
+                        .frame(width: 52, alignment: .trailing)
+                }
+            }
+        }
+        .cardStyle()
+    }
 
     private var zones: [HealthMath.Zone] { HealthMath.zones(age: Profile.age) }
 

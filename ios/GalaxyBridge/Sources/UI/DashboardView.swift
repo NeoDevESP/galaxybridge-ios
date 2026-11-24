@@ -75,6 +75,16 @@ struct DashboardView: View {
                     ReadinessCard(readiness: dashboard.readiness, stress: dashboard.stress)
                         .scrollSettle()
 
+                    if let signals = dashboard.nightSignals, signals.mayBeIll || signals.oxygenMin != nil {
+                        NightSignalsCard(signals: signals)
+                            .scrollSettle()
+                    }
+
+                    if let training = dashboard.training {
+                        TrainingCard(status: training)
+                            .scrollSettle()
+                    }
+
                     metricGrid
 
                     sleepRow

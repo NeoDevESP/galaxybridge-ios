@@ -402,3 +402,125 @@ struct BodyCompositionView: View {
         .task { coordinator.pushHealthConfig() }
     }
 }
+
+/// Training load, recovery and cardio fitness, from the load and VO2max the
+/// watch works out for each session.
+struct TrainingCard: View {
+    let status: TrainingStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Training", systemImage: "figure.run")
+                .symbolRenderingMode(.hierarchical)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.orange)
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Load, 7 days").font(.caption).foregroundStyle(.secondary)
+                    Text(status.acute.noDecimals)
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .contentTransition(.numericText(value: status.acute))
+                    Text(tr(status.label))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
+                    loadBar
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recovery").font(.caption).foregroundStyle(.secondary)
+                    if status.recoveryLeftHours > 0 {
+                        Text("\(status.recoveryLeftHours) h")
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                        Text("to recover").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Ready")
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .foregroundStyle(.green)
+                        Text("for a hard session").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let vo2 = status.vo2Max {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Cardio fitness").font(.caption).foregroundStyle(.secondary)
+                        Text(vo2.oneDecimal)
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                        Text(tr(TrainingStatus.fitnessLabel(vo2)))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.cyan)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .cardStyle()
+    }
+
+    private var tint: Color {
+        switch status.label {
+        case "Optimal": return .green
+        case "High": return .orange
+        case "Very high": return .red
+        default: return .secondary
+        }
+    }
+
+    /// Where this week sits against the usual: the green band is 0.8-1.3.
+    private var loadBar: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let marker = min(max((status.ratio ?? 0) / 2, 0), 1) * w
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.2))
+                Capsule().fill(Color.green.opacity(0.45))
+                    .frame(width: w * 0.25)
+                    .offset(x: w * 0.4)
+                Circle().fill(tint).frame(width: 10, height: 10).offset(x: marker - 5)
+            }
+        }
+        .frame(height: 10)
+        .padding(.top, 2)
+    }
+}
+
+/// Last night's oxygen, and a warning when skin temperature and resting pulse
+/// both rose: the usual sign of the body fighting something off.
+struct NightSignalsCard: View {
+    let signals: NightSignals
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if signals.mayBeIll {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Your body may be fighting something off")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Skin temperature and resting pulse were both above normal last night. Take it easy today.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "thermometer.medium").foregroundStyle(.orange)
+                }
+            }
+            HStack(spacing: 16) {
+                if let min = signals.oxygenMin {
+                    signal("Oxygen low", "\(Int((min * 100).rounded())) %", min < 0.90 ? .orange : .cyan)
+                    signal("Drops below 90 %", "\(signals.oxygenDrops)", signals.oxygenDrops > 0 ? .orange : .secondary)
+                }
+                if let skin = signals.skinDelta {
+                    signal("Skin temperature", String(format: "%+.1f °C", skin), abs(skin) >= 0.5 ? .orange : .secondary)
+                }
+            }
+        }
+        .cardStyle()
+    }
+
+    private func signal(_ title: LocalizedStringKey, _ value: String, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.system(.headline, design: .rounded)).foregroundStyle(tint)
+        }
+    }
+}
+
